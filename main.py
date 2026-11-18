@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from app.api.hotel_router import router as hotel_router
+from app.api.usuario_router import router as usuario_router
 
 app = FastAPI(
     title="Hotel-Book",
@@ -7,6 +8,7 @@ app = FastAPI(
     version="1.0.0"
 )
 app.include_router(hotel_router)
+app.include_router(usuario_router)
 
 
 @app.get("/")
