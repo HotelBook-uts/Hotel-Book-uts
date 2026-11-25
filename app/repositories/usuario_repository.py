@@ -10,6 +10,9 @@ class UsuarioRepository:
         self._db: dict[int, UsuarioInDB] = {}
         self._next_id: int = 1
 
+    def get_by_id(self, usuario_id: int) -> Optional[UsuarioInDB]:
+        return self._db.get(usuario_id)
+
     def get_by_email(self, email: str) -> Optional[UsuarioInDB]:
         return next(
             (u for u in self._db.values() if u.email.lower() == email.lower()),

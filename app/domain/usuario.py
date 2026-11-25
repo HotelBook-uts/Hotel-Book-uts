@@ -48,3 +48,17 @@ class Usuario(UsuarioBase):
 # Lo que se guarda internamente: incluye el hash de la contraseña
 class UsuarioInDB(Usuario):
     password_hash: str
+
+
+# HU: datos públicos que se muestran al consultar un usuario
+class UsuarioConsulta(BaseModel):
+    id: int
+    nombre: str
+    correo: EmailStr
+
+
+# HU: formato estándar de respuesta de la consulta de usuario
+class RespuestaUsuario(BaseModel):
+    mensaje: str
+    data: Optional[UsuarioConsulta] = None
+    success: bool

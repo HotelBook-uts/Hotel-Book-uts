@@ -1,7 +1,9 @@
+from typing import Optional
+
 from fastapi import HTTPException, status
 
 from app.core.security import hash_password
-from app.domain.usuario import Usuario, UsuarioCreate
+from app.domain.usuario import Usuario, UsuarioConsulta, UsuarioCreate
 from app.repositories.usuario_repository import UsuarioRepository
 
 
@@ -20,3 +22,11 @@ class UsuarioService:
         usuario = self.repo.create(data, hash_password(data.password))
         # Se devuelve sin el hash de la contraseña
         return Usuario(**usuario.model_dump(exclude={"password_hash"}))
+
+    def consultar(self, usuario_id: int) -> Optional[UsuarioConsulta]:
+        # Regla de negocio: validar que el usuario exista
+        usuario = self.repo.get_by_id(usuario_id)
+        if not usuario:
+            return None
+        # Solo se exponen los datos públicos (nunca la contraseña)
+        return UsuarioConsulta(id=usuario.id, nombre=usuario.nombre, correo=usuario.email)
