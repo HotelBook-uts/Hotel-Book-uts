@@ -1,7 +1,9 @@
 from fastapi import HTTPException, status
 
 from app.core.security import hash_password
-from app.domain.errores import CorreoDuplicadoError, UsuarioNoEncontradoError
+from app.domain.auth import SesionUsuario
+from app.domain.errores import (AccesoDenegadoError, CorreoDuplicadoError,
+                                UsuarioNoEncontradoError)
 from app.domain.usuario import (PerfilUpdate, PerfilUsuario, Usuario,
                                 UsuarioCreate, UsuarioInDB)
 from app.repositories.usuario_repository import UsuarioRepository
@@ -24,16 +26,22 @@ class UsuarioService:
         return Usuario(**usuario.model_dump(exclude={"password_hash"}))
 
     # HU-004: consulta del perfil del cliente
-    # TODO HU-002: validar que quien consulta sea el dueño del perfil o un administrador
-    def consultar_perfil(self, usuario_id: int) -> PerfilUsuario:
+    def consultar_perfil(self, usuario_id: int, solicitante: SesionUsuario) -> PerfilUsuario:
+        # HU-002: solo el dueño del perfil o un administrador
+        if not solicitante.puede_acceder_a(usuario_id):
+            raise AccesoDenegadoError()
         usuario = self.repo.get_by_id(usuario_id)
         if not usuario:
             raise UsuarioNoEncontradoError(usuario_id)
         return self._a_perfil(usuario)
 
     # HU-004: actualización del perfil del cliente
-    # TODO HU-002: validar que quien actualiza sea el dueño del perfil o un administrador
-    def actualizar_perfil(self, usuario_id: int, data: PerfilUpdate) -> PerfilUsuario:
+    def actualizar_perfil(
+        self, usuario_id: int, data: PerfilUpdate, solicitante: SesionUsuario
+    ) -> PerfilUsuario:
+        # HU-002: solo el dueño del perfil o un administrador
+        if not solicitante.puede_acceder_a(usuario_id):
+            raise AccesoDenegadoError()
         if not self.repo.get_by_id(usuario_id):
             raise UsuarioNoEncontradoError(usuario_id)
 

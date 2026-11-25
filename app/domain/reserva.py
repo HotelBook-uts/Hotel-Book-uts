@@ -12,7 +12,7 @@ class EstadoReserva(str, Enum):
 
 # Lo que envía el cliente para RESERVAR (sin id)
 class ReservaCreate(BaseModel):
-    # TODO HU-002: el usuarioId se tomará de la sesión del cliente
+    # HU-002: debe coincidir con el usuario en sesión (salvo el administrador)
     usuarioId: int = Field(..., gt=0, description="Identificador del cliente que reserva")
     habitacionId: int = Field(..., gt=0, description="Habitación que se desea reservar")
     fechaEntrada: date = Field(..., description="Fecha de llegada (AAAA-MM-DD)")

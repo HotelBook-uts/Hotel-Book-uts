@@ -1,9 +1,10 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 
-from app.api.dependencias import usuario_repo as repo
+from app.api.dependencias import get_sesion, usuario_repo as repo
 from app.api.validacion import ruta_validacion_400
-from app.domain.errores import (CorreoDuplicadoError, RepositorioNoDisponibleError,
+from app.domain.auth import SesionUsuario
+from app.domain.errores import (AccesoDenegadoError, CorreoDuplicadoError, RepositorioNoDisponibleError,
                                 UsuarioNoEncontradoError)
 from app.domain.usuario import (MENSAJE_CORREO_INVALIDO, PerfilUpdate, PerfilUsuario,
                                 RespuestaPerfil, Usuario, UsuarioCreate)
@@ -27,6 +28,9 @@ def registrar_usuario(data: UsuarioCreate):
 
 MSG_NO_EXISTE = "No existe un cliente con el identificador indicado"
 MSG_NO_ACTUALIZADO = "No fue posible actualizar el perfil."
+MSG_403_CONSULTAR = ("No fue posible consultar el perfil. "
+                     "Un cliente solo puede consultar su propio perfil")
+MSG_403_ACTUALIZAR = f"{MSG_NO_ACTUALIZADO} Un cliente solo puede actualizar su propio perfil"
 
 
 def _respuesta(codigo: int, mensaje: str, data: PerfilUsuario | None = None) -> JSONResponse:
@@ -60,19 +64,23 @@ _EJEMPLO_VACIO = {"usuarioId": 99999, "nombres": None, "correo": None, "telefono
                                      "Perfil encontrado"),
         status.HTTP_404_NOT_FOUND: _ejemplo(MSG_NO_EXISTE, _EJEMPLO_VACIO, False,
                                             "No existe el cliente"),
+        status.HTTP_401_UNAUTHORIZED: {"description": "Sin sesión o token inválido/expirado"},
+        status.HTTP_403_FORBIDDEN: _ejemplo(MSG_403_CONSULTAR, None, False, "Sin permiso"),
         status.HTTP_503_SERVICE_UNAVAILABLE: _ejemplo(
             "No fue posible consultar el perfil del cliente", None, False,
             "Base de datos no disponible"),
     },
 )
-def consultar_perfil(usuario_id: int):
+def consultar_perfil(usuario_id: int, sesion: SesionUsuario = Depends(get_sesion)):
     """HU-004: consulta el perfil del cliente (nombres, correo y teléfono) por su ID,
     sin exponer datos sensibles.
 
-    Pendiente HU-002: solo el dueño del perfil o un administrador podrán consultarlo.
+    Requiere sesión (HU-002): solo el dueño del perfil o un administrador.
     """
     try:
-        perfil = service.consultar_perfil(usuario_id)
+        perfil = service.consultar_perfil(usuario_id, sesion)
+    except AccesoDenegadoError:
+        return _respuesta(status.HTTP_403_FORBIDDEN, MSG_403_CONSULTAR)
     except UsuarioNoEncontradoError:
         return _respuesta(status.HTTP_404_NOT_FOUND, MSG_NO_EXISTE, _perfil_vacio(usuario_id))
     except RepositorioNoDisponibleError:
@@ -81,14 +89,17 @@ def consultar_perfil(usuario_id: int):
     return RespuestaPerfil(mensaje="Perfil consultado correctamente", data=perfil, success=True)
 
 
-def actualizar_perfil(usuario_id: int, data: PerfilUpdate):
+def actualizar_perfil(usuario_id: int, data: PerfilUpdate,
+                      sesion: SesionUsuario = Depends(get_sesion)):
     """HU-004: actualiza los datos de contacto del cliente (nombres, correo y teléfono).
     El correo debe tener formato válido y no puede pertenecer a otro usuario.
 
-    Pendiente HU-002: solo el dueño del perfil o un administrador podrán actualizarlo.
+    Requiere sesión (HU-002): solo el dueño del perfil o un administrador.
     """
     try:
-        perfil = service.actualizar_perfil(usuario_id, data)
+        perfil = service.actualizar_perfil(usuario_id, data, sesion)
+    except AccesoDenegadoError:
+        return _respuesta(status.HTTP_403_FORBIDDEN, MSG_403_ACTUALIZAR)
     except UsuarioNoEncontradoError:
         return _respuesta(status.HTTP_404_NOT_FOUND, MSG_NO_EXISTE, _perfil_vacio(usuario_id))
     except CorreoDuplicadoError:
@@ -115,6 +126,8 @@ router.add_api_route(
                                               None, False, "Datos inválidos"),
         status.HTTP_404_NOT_FOUND: _ejemplo(MSG_NO_EXISTE, _EJEMPLO_VACIO, False,
                                             "No existe el cliente"),
+        status.HTTP_401_UNAUTHORIZED: {"description": "Sin sesión o token inválido/expirado"},
+        status.HTTP_403_FORBIDDEN: _ejemplo(MSG_403_ACTUALIZAR, None, False, "Sin permiso"),
         status.HTTP_409_CONFLICT: _ejemplo(
             f"{MSG_NO_ACTUALIZADO} El correo ya está registrado por otro usuario", None, False,
             "Correo duplicado"),

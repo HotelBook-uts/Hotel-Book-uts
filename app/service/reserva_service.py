@@ -1,7 +1,8 @@
 from datetime import date
 from typing import Optional
 
-from app.domain.errores import (FechasInvalidasError, HabitacionNoDisponibleError,
+from app.domain.auth import SesionUsuario
+from app.domain.errores import (AccesoDenegadoError, FechasInvalidasError, HabitacionNoDisponibleError,
                                 HabitacionNoEncontradaError, ReservaNoEncontradaError,
                                 ReservaYaCanceladaError, UsuarioNoEncontradoError)
 from app.domain.reserva import (EstadoHistorial, EstadoReserva, HistorialReservas, Reserva,
@@ -27,7 +28,11 @@ class ReservaService:
         self.hotel_repo = hotel_repo
 
     # HU-013: realizar una reserva de una habitación
-    def crear(self, data: ReservaCreate) -> Reserva:
+    def crear(self, data: ReservaCreate, solicitante: SesionUsuario) -> Reserva:
+        # HU-002: un cliente solo reserva a su nombre (el administrador puede reservar por otro)
+        if not solicitante.puede_acceder_a(data.usuarioId):
+            raise AccesoDenegadoError()
+
         # Regla de negocio: fechas coherentes
         if data.fechaSalida <= data.fechaEntrada:
             raise FechasInvalidasError(
@@ -52,11 +57,14 @@ class ReservaService:
         return self.repo.create(data)
 
     # HU-014: cancelar una reserva registrada
-    # TODO HU-002: validar que quien cancela sea el dueño de la reserva o un administrador
-    def cancelar(self, reserva_id: int) -> Reserva:
+    def cancelar(self, reserva_id: int, solicitante: SesionUsuario) -> Reserva:
         reserva = self.repo.get_by_id(reserva_id)
         if not reserva:
             raise ReservaNoEncontradaError(reserva_id)
+
+        # HU-002: solo el dueño de la reserva o un administrador puede cancelarla
+        if not solicitante.puede_acceder_a(reserva.usuarioId):
+            raise AccesoDenegadoError()
 
         # Regla de negocio: solo se cancelan reservas activas
         if reserva.estado == EstadoReserva.cancelada:
@@ -67,10 +75,14 @@ class ReservaService:
         return self.repo.update_estado(reserva_id, EstadoReserva.cancelada)
 
     # HU-005: historial de reservas del cliente, de la más reciente a la más antigua
-    # TODO HU-002: validar que el cliente consulte solo sus propias reservas (403)
     def historial(
-        self, usuario_id: int, estado: Optional[EstadoHistorial] = None
+        self, usuario_id: int, solicitante: SesionUsuario,
+        estado: Optional[EstadoHistorial] = None,
     ) -> HistorialReservas:
+        # HU-002: un cliente solo consulta sus propias reservas
+        if not solicitante.puede_acceder_a(usuario_id):
+            raise AccesoDenegadoError()
+
         if not self.usuario_repo.get_by_id(usuario_id):
             raise UsuarioNoEncontradoError(usuario_id)
 

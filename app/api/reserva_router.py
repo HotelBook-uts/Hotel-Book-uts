@@ -1,12 +1,14 @@
 from typing import Optional
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
 
+from app.api.dependencias import get_sesion
 from app.api.habitacion_router import repo as habitacion_repo
 from app.api.hotel_router import repo as hotel_repo
 from app.api.usuario_router import repo as usuario_repo
-from app.domain.errores import (FechasInvalidasError, HabitacionNoDisponibleError,
+from app.domain.auth import SesionUsuario
+from app.domain.errores import (AccesoDenegadoError, FechasInvalidasError, HabitacionNoDisponibleError,
                                 HabitacionNoEncontradaError, RepositorioNoDisponibleError,
                                 ReservaNoEncontradaError, ReservaYaCanceladaError,
                                 UsuarioNoEncontradoError)
@@ -28,6 +30,12 @@ historial_router = APIRouter(prefix="/api/v1/usuarios", tags=["Reservas"])
 
 MSG_NO_DISPONIBLE = "La habitación no se encuentra disponible"
 MSG_YA_CANCELADA = "La reserva ya se encuentra cancelada"
+MSG_403_RESERVAR = ("No fue posible crear la reserva. "
+                    "Un cliente solo puede reservar a su propio nombre")
+MSG_403_CANCELAR = ("No fue posible cancelar la reserva. "
+                    "Un cliente solo puede cancelar sus propias reservas")
+MSG_403_HISTORIAL = ("No fue posible consultar el historial de reservas. "
+                     "Un cliente solo puede consultar sus propias reservas")
 
 
 def _error(codigo: int, mensaje: str) -> JSONResponse:
@@ -58,17 +66,27 @@ def _ejemplo(modelo, ejemplo: dict, descripcion: str) -> dict:
             RespuestaErrorReserva,
             {"mensaje": "La habitación indicada no existe", "success": False},
             "El cliente o la habitación no existen"),
+        status.HTTP_401_UNAUTHORIZED: {"description": "Sin sesión o token inválido/expirado"},
+        status.HTTP_403_FORBIDDEN: _ejemplo(
+            RespuestaErrorReserva,
+            {"mensaje": MSG_403_RESERVAR, "success": False},
+            "Sin permiso"),
     },
 )
-def crear_reserva(data: ReservaCreate):
+def crear_reserva(data: ReservaCreate, sesion: SesionUsuario = Depends(get_sesion)):
     """HU-013: registra la reserva de una habitación para las fechas indicadas.
 
     Valida que la habitación exista, esté habilitada y no tenga otra reserva
     activa que se cruce con esas fechas. El día de salida de una reserva puede
     ser el día de entrada de otra.
+
+    Requiere sesión (HU-002): el cliente reserva a su nombre; el administrador
+    puede reservar por cualquier cliente.
     """
     try:
-        reserva = service.crear(data)
+        reserva = service.crear(data, sesion)
+    except AccesoDenegadoError:
+        return _error(status.HTTP_403_FORBIDDEN, MSG_403_RESERVAR)
     except HabitacionNoDisponibleError:
         return _error(status.HTTP_400_BAD_REQUEST, MSG_NO_DISPONIBLE)
     except FechasInvalidasError as exc:
@@ -98,14 +116,23 @@ def crear_reserva(data: ReservaCreate):
             RespuestaErrorReserva,
             {"mensaje": "Reserva no encontrada", "success": False},
             "La reserva no existe"),
+        status.HTTP_401_UNAUTHORIZED: {"description": "Sin sesión o token inválido/expirado"},
+        status.HTTP_403_FORBIDDEN: _ejemplo(
+            RespuestaErrorReserva,
+            {"mensaje": MSG_403_CANCELAR, "success": False},
+            "Sin permiso"),
     },
 )
-def cancelar_reserva(reserva_id: int):
+def cancelar_reserva(reserva_id: int, sesion: SesionUsuario = Depends(get_sesion)):
     """HU-014: cancela una reserva activa. La reserva pasa a estado "cancelada"
     y la habitación queda libre para esas fechas.
+
+    Requiere sesión (HU-002): solo el dueño de la reserva o un administrador.
     """
     try:
-        service.cancelar(reserva_id)
+        service.cancelar(reserva_id, sesion)
+    except AccesoDenegadoError:
+        return _error(status.HTTP_403_FORBIDDEN, MSG_403_CANCELAR)
     except ReservaNoEncontradaError:
         return _error(status.HTTP_404_NOT_FOUND, "Reserva no encontrada")
     except ReservaYaCanceladaError:
@@ -155,6 +182,11 @@ def _respuesta_historial(codigo: int, mensaje: str, data: Optional[dict]) -> JSO
             RespuestaHistorial,
             {"mensaje": MSG_CLIENTE_NO_EXISTE, "data": None, "success": False},
             "El cliente no existe"),
+        status.HTTP_401_UNAUTHORIZED: {"description": "Sin sesión o token inválido/expirado"},
+        status.HTTP_403_FORBIDDEN: _ejemplo(
+            RespuestaHistorial,
+            {"mensaje": MSG_403_HISTORIAL, "data": None, "success": False},
+            "Un cliente consulta reservas de otro"),
         status.HTTP_503_SERVICE_UNAVAILABLE: _ejemplo(
             RespuestaHistorial,
             {"mensaje": MSG_HISTORIAL_503, "data": None, "success": False},
@@ -165,6 +197,7 @@ def historial_reservas(
     usuario_id: int,
     estado: Optional[EstadoHistorial] = Query(
         default=None, description="Filtro opcional: CONFIRMADA, FINALIZADA o CANCELADA"),
+    sesion: SesionUsuario = Depends(get_sesion),
 ):
     """HU-005: muestra todas las reservas del cliente ordenadas por fecha de entrada
     (la más reciente primero), con el hotel y su estado.
@@ -173,10 +206,13 @@ def historial_reservas(
     - **ultimaReserva**: código de la reserva más reciente
     - **reservas**: listado con reservaId, hotel, fechaEntrada y estado
 
-    Pendiente HU-002: un cliente solo podrá consultar sus propias reservas (403).
+    Requiere sesión (HU-002): un cliente solo consulta sus propias reservas;
+    el administrador puede consultar las de cualquier cliente.
     """
     try:
-        historial = service.historial(usuario_id, estado)
+        historial = service.historial(usuario_id, sesion, estado)
+    except AccesoDenegadoError:
+        return _respuesta_historial(status.HTTP_403_FORBIDDEN, MSG_403_HISTORIAL, None)
     except UsuarioNoEncontradoError:
         return _respuesta_historial(status.HTTP_404_NOT_FOUND, MSG_CLIENTE_NO_EXISTE, None)
     except RepositorioNoDisponibleError:
