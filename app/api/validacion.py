@@ -33,6 +33,34 @@ async def manejar_error_api(_: Request, exc: ErrorAPI) -> JSONResponse:
     return respuesta_error(exc.codigo, exc.mensaje, exc.data)
 
 
+_MENSAJES = {
+    "missing": "es obligatorio",
+    "string_type": "debe ser texto",
+    "string_too_short": "debe tener al menos {min_length} caracteres",
+    "string_too_long": "debe tener máximo {max_length} caracteres",
+    "string_pattern_mismatch": "no tiene un formato válido",
+    "int_parsing": "debe ser un número entero",
+    "int_type": "debe ser un número entero",
+    "float_parsing": "debe ser un número",
+    "greater_than": "debe ser mayor que {gt}",
+    "greater_than_equal": "debe ser mayor o igual que {ge}",
+    "less_than_equal": "debe ser menor o igual que {le}",
+    "date_from_datetime_parsing": "debe ser una fecha válida (AAAA-MM-DD)",
+    "json_invalid": "el cuerpo no es un JSON válido",
+}
+
+
+def _traducir(error: dict) -> str:
+    """Mensaje de validación en español; si no está traducido, se deja el original."""
+    plantilla = _MENSAJES.get(error.get("type", ""))
+    if not plantilla:
+        return str(error.get("msg"))
+    try:
+        return plantilla.format(**error.get("ctx", {}))
+    except (KeyError, IndexError):
+        return str(error.get("msg"))
+
+
 def ruta_validacion_400(
     mensaje_base: str, data_error: Optional[Callable[[Request], Any]] = None
 ) -> Type[APIRoute]:
@@ -53,14 +81,21 @@ def ruta_validacion_400(
                     detalles = []
                     for error in exc.errors():
                         loc = error.get("loc", ())
-                        if "correo" in loc:
+                        es_correo = "correo" in loc or "email" in loc
+                        if es_correo and error.get("type") != "missing":
                             detalles.append(MENSAJE_CORREO_INVALIDO)
+                        elif error.get("type") == "value_error":
+                            # Reglas de negocio propias: se muestra solo el mensaje
+                            detalles.append(str(error.get("ctx", {}).get("error", error.get("msg"))))
                         else:
-                            campo = ".".join(str(p) for p in loc[1:])
-                            detalles.append(f"{campo}: {error.get('msg')}")
+                            campo = ".".join(str(p) for p in loc[1:]) or "cuerpo"
+                            detalles.append(f"{campo}: {_traducir(error)}")
+                    # Sin mensajes repetidos (ej. correo inválido detectado dos veces),
+                    # separados por punto: "Base. Detalle 1. Detalle 2"
+                    detalles = list(dict.fromkeys(d.rstrip(".") for d in detalles))
                     data = await data_error(request) if data_error else None
                     return respuesta_error(status.HTTP_400_BAD_REQUEST,
-                                           " ".join([mensaje_base, *detalles]), data)
+                                           f"{mensaje_base} {'. '.join(detalles)}", data)
 
             return handler
 

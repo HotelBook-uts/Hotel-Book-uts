@@ -47,6 +47,13 @@ class Usuario(UsuarioBase):
     id: int
 
 
+# HU-001: formato de respuesta del registro: {mensaje, data, success}
+class RespuestaRegistro(BaseModel):
+    mensaje: str
+    data: Optional[Usuario] = None
+    success: bool
+
+
 # HU-002: roles del sistema
 class Rol(str, Enum):
     CLIENTE = "CLIENTE"

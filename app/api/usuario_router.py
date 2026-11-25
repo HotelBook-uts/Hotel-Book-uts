@@ -7,7 +7,7 @@ from app.domain.auth import SesionUsuario
 from app.domain.errores import (AccesoDenegadoError, CorreoDuplicadoError, RepositorioNoDisponibleError,
                                 UsuarioNoEncontradoError)
 from app.domain.usuario import (MENSAJE_CORREO_INVALIDO, PerfilUpdate, PerfilUsuario,
-                                RespuestaPerfil, Usuario, UsuarioCreate)
+                                RespuestaPerfil, RespuestaRegistro, UsuarioCreate)
 from app.service.usuario_service import UsuarioService
 
 # El repositorio de usuarios es compartido con el login (HU-002), ver dependencias.py
@@ -16,10 +16,65 @@ service = UsuarioService(repo)
 router = APIRouter(prefix="/api/v1/usuarios", tags=["Usuarios"])
 
 
-@router.post("/", response_model=Usuario, status_code=status.HTTP_201_CREATED)
+# ---------------------------------------------------------------------------
+# HU-001: registro de usuario
+# ---------------------------------------------------------------------------
+
+MSG_REGISTRO_OK = "Usuario registrado correctamente"
+MSG_NO_REGISTRADO = "No fue posible registrar el usuario."
+MSG_CORREO_REGISTRADO = f"{MSG_NO_REGISTRADO} Ya existe un usuario registrado con ese correo"
+MSG_REGISTRO_503 = "No fue posible registrar el usuario en este momento"
+
+
+def _ejemplo_registro(codigo_desc: str, mensaje: str, data, success: bool) -> dict:
+    return {"model": RespuestaRegistro, "description": codigo_desc,
+            "content": {"application/json": {"example": {
+                "mensaje": mensaje, "data": data, "success": success}}}}
+
+
 def registrar_usuario(data: UsuarioCreate):
-    """HU-001: registra un usuario nuevo."""
-    return service.registrar(data)
+    """HU-001: registra un usuario nuevo como **CLIENTE** con la cuenta **ACTIVA**.
+
+    - El correo se guarda en minúsculas y no puede repetirse.
+    - La contraseña debe tener entre 8 y 72 caracteres, con al menos una letra y un número;
+      se guarda cifrada y nunca se devuelve.
+    """
+    try:
+        usuario = service.registrar(data)
+    except CorreoDuplicadoError:
+        return _respuesta_simple(status.HTTP_409_CONFLICT, MSG_CORREO_REGISTRADO)
+    except RepositorioNoDisponibleError:
+        return _respuesta_simple(status.HTTP_503_SERVICE_UNAVAILABLE, MSG_REGISTRO_503)
+    return RespuestaRegistro(mensaje=MSG_REGISTRO_OK, data=usuario, success=True)
+
+
+def _respuesta_simple(codigo: int, mensaje: str) -> JSONResponse:
+    cuerpo = RespuestaRegistro(mensaje=mensaje, data=None, success=False)
+    return JSONResponse(status_code=codigo, content=cuerpo.model_dump())
+
+
+# Se registra con add_api_route para responder 400 (no 422) si los datos son inválidos
+router.add_api_route(
+    "/",
+    registrar_usuario,
+    methods=["POST"],
+    response_model=RespuestaRegistro,
+    status_code=status.HTTP_201_CREATED,
+    summary="Registrar un usuario",
+    route_class_override=ruta_validacion_400(MSG_NO_REGISTRADO),
+    responses={
+        status.HTTP_201_CREATED: _ejemplo_registro(
+            "Usuario registrado", MSG_REGISTRO_OK,
+            {"nombre": "Laura Gómez", "email": "laura.gomez@correo.com",
+             "telefono": "3109876543", "id": 1}, True),
+        status.HTTP_400_BAD_REQUEST: _ejemplo_registro(
+            "Datos inválidos", f"{MSG_NO_REGISTRADO} {MENSAJE_CORREO_INVALIDO}", None, False),
+        status.HTTP_409_CONFLICT: _ejemplo_registro(
+            "Correo ya registrado", MSG_CORREO_REGISTRADO, None, False),
+        status.HTTP_503_SERVICE_UNAVAILABLE: _ejemplo_registro(
+            "Base de datos no disponible", MSG_REGISTRO_503, None, False),
+    },
+)
 
 
 # ---------------------------------------------------------------------------

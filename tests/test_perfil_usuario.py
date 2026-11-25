@@ -223,10 +223,3 @@ def test_caso5_bd_no_disponible_en_actualizacion_retorna_503(monkeypatch):
 
     assert respuesta.status_code == 503
     assert "No fue posible actualizar el perfil del cliente" in respuesta.json()["mensaje"]
-
-
-def test_registro_sigue_respondiendo_422_con_datos_invalidos():
-    """La validación 400 personalizada aplica solo a los endpoints que lo piden."""
-    respuesta = client.post(f"{URL}/", json={"nombre": "x", "email": "malo", "password": "1"})
-
-    assert respuesta.status_code == 422

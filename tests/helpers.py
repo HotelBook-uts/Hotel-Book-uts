@@ -37,7 +37,7 @@ def registrar(nombre: str = "laura gómez", email: str | None = None,
         "password": CLAVE, "telefono": telefono,
     })
     assert respuesta.status_code == 201, respuesta.text
-    return respuesta.json()
+    return respuesta.json()["data"]
 
 
 def iniciar_sesion(email: str) -> str:

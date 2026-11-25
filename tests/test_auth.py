@@ -32,7 +32,7 @@ def _registrar() -> dict:
     respuesta = client.post("/api/v1/usuarios/", json={
         "nombre": "Laura Gómez", "email": correo, "password": CLAVE})
     assert respuesta.status_code == 201
-    return respuesta.json()
+    return respuesta.json()["data"]
 
 
 def _login(correo: str, contrasena: str = CLAVE):
