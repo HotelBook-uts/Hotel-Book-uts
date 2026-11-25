@@ -35,7 +35,7 @@ def registrar_usuario(data: UsuarioCreate):
     },
 )
 def consultar_usuario(usuario_id: int):
-    """Consulta la información personal (id, nombre y correo) de un usuario por su ID."""
+    """HU-003: consulta la información personal (id, nombre y correo) de un usuario por su ID."""
     usuario = service.consultar(usuario_id)
     if usuario is None:
         respuesta = RespuestaUsuario(mensaje="Usuario no encontrado", data=None, success=False)

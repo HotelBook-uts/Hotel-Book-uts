@@ -1,3 +1,5 @@
+"""Pruebas de la HU-003: consultar información personal del usuario."""
+
 from fastapi.testclient import TestClient
 
 from main import app
