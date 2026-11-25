@@ -1,19 +1,15 @@
-from typing import Callable
-
-from fastapi import APIRouter, Request, Response, status
-from fastapi.exceptions import RequestValidationError
+from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
-from fastapi.routing import APIRoute
 
+from app.api.dependencias import usuario_repo as repo
+from app.api.validacion import ruta_validacion_400
 from app.domain.errores import (CorreoDuplicadoError, RepositorioNoDisponibleError,
                                 UsuarioNoEncontradoError)
 from app.domain.usuario import (MENSAJE_CORREO_INVALIDO, PerfilUpdate, PerfilUsuario,
                                 RespuestaPerfil, Usuario, UsuarioCreate)
-from app.repositories.usuario_repository import UsuarioRepository
 from app.service.usuario_service import UsuarioService
 
-# Instancias: un solo repositorio, así los datos se comparten entre peticiones
-repo = UsuarioRepository()
+# El repositorio de usuarios es compartido con el login (HU-002), ver dependencias.py
 service = UsuarioService(repo)
 
 router = APIRouter(prefix="/api/v1/usuarios", tags=["Usuarios"])
@@ -53,30 +49,6 @@ def _ejemplo(mensaje: str, data: dict | None, success: bool, descripcion: str) -
 _EJEMPLO_PERFIL = {"usuarioId": 1024, "nombres": "Laura Gómez",
                    "correo": "laura.gomez@correo.com", "telefono": "3109876543"}
 _EJEMPLO_VACIO = {"usuarioId": 99999, "nombres": None, "correo": None, "telefono": None}
-
-
-class PerfilValidacionRoute(APIRoute):
-    """Responde 400 con el formato {mensaje, data, success} cuando el cuerpo
-    del PUT de perfil no es válido (en vez del 422 por defecto de FastAPI)."""
-
-    def get_route_handler(self) -> Callable:
-        handler_original = super().get_route_handler()
-
-        async def handler(request: Request) -> Response:
-            try:
-                return await handler_original(request)
-            except RequestValidationError as exc:
-                detalles = []
-                for error in exc.errors():
-                    if "correo" in error.get("loc", ()):
-                        detalles.append(MENSAJE_CORREO_INVALIDO)
-                    else:
-                        campo = ".".join(str(p) for p in error.get("loc", ())[1:])
-                        detalles.append(f"{campo}: {error.get('msg')}")
-                mensaje = " ".join([MSG_NO_ACTUALIZADO, *detalles])
-                return _respuesta(status.HTTP_400_BAD_REQUEST, mensaje)
-
-        return handler
 
 
 @router.get(
@@ -135,7 +107,7 @@ router.add_api_route(
     methods=["PUT"],
     response_model=RespuestaPerfil,
     summary="Actualizar el perfil del cliente",
-    route_class_override=PerfilValidacionRoute,
+    route_class_override=ruta_validacion_400(MSG_NO_ACTUALIZADO),
     responses={
         status.HTTP_200_OK: _ejemplo("Perfil actualizado correctamente", _EJEMPLO_PERFIL, True,
                                      "Perfil actualizado"),

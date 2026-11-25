@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Optional
 
 from email_validator import EmailNotValidError, validate_email
@@ -46,16 +47,45 @@ class Usuario(UsuarioBase):
     id: int
 
 
+# HU-002: roles del sistema
+class Rol(str, Enum):
+    CLIENTE = "CLIENTE"
+    HOTELERO = "HOTELERO"
+    ADMINISTRADOR = "ADMINISTRADOR"
+
+
+# HU-002: estado de la cuenta
+class EstadoCuenta(str, Enum):
+    ACTIVA = "ACTIVA"
+    BLOQUEADA = "BLOQUEADA"
+    INACTIVA = "INACTIVA"
+
+
 # Lo que se guarda internamente: incluye el hash de la contraseña
 class UsuarioInDB(Usuario):
     password_hash: str
+    # HU-002: todo usuario nuevo es CLIENTE con cuenta ACTIVA
+    rol: Rol = Rol.CLIENTE
+    estado: EstadoCuenta = EstadoCuenta.ACTIVA
+    intentos_fallidos: int = 0
+
+
+MENSAJE_CORREO_INVALIDO = "Formato de correo no válido. Debe ser usuario@dominio.com"
+
+
+def validar_formato_correo(v: str) -> str:
+    """Regla de negocio: el correo debe tener formato usuario@dominio.com.
+    Se devuelve limpio y en minúsculas."""
+    try:
+        validate_email(v, check_deliverability=False)
+    except EmailNotValidError:
+        raise ValueError(MENSAJE_CORREO_INVALIDO)
+    return v.strip().lower()
 
 
 # ---------------------------------------------------------------------------
 # HU-004: consulta y actualización del perfil del cliente
 # ---------------------------------------------------------------------------
-
-MENSAJE_CORREO_INVALIDO = "Formato de correo no válido. Debe ser usuario@dominio.com"
 
 
 # Perfil del cliente sin datos sensibles (nunca incluye la contraseña)
@@ -84,11 +114,7 @@ class PerfilUpdate(BaseModel):
     @field_validator("correo")
     @classmethod
     def validar_correo(cls, v: str) -> str:
-        try:
-            validate_email(v, check_deliverability=False)
-        except EmailNotValidError:
-            raise ValueError(MENSAJE_CORREO_INVALIDO)
-        return v.strip().lower()
+        return validar_formato_correo(v)
 
 
 # Formato estándar de respuesta del perfil: {mensaje, data, success}

@@ -35,3 +35,29 @@ class ReservaNoEncontradaError(Exception):
 
 class ReservaYaCanceladaError(Exception):
     """La reserva ya estaba cancelada."""
+
+
+# --------------------------------- HU-002 ---------------------------------
+
+class CuentaNoActivaError(Exception):
+    """No existe una cuenta activa con ese correo."""
+
+
+class CredencialesInvalidasError(Exception):
+    """La contraseña no coincide."""
+
+    def __init__(self, intentos_restantes: int):
+        super().__init__(intentos_restantes)
+        self.intentos_restantes = intentos_restantes
+
+
+class CuentaBloqueadaError(Exception):
+    """La cuenta se bloqueó por superar el máximo de intentos fallidos."""
+
+
+class TokenInvalidoError(Exception):
+    """El token no es válido, expiró o la sesión fue cerrada."""
+
+
+class AccesoDenegadoError(Exception):
+    """El usuario no tiene permiso para esta operación."""

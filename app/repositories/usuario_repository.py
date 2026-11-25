@@ -1,6 +1,6 @@
 from typing import Optional
 
-from app.domain.usuario import UsuarioCreate, UsuarioInDB
+from app.domain.usuario import EstadoCuenta, UsuarioCreate, UsuarioInDB
 
 
 class UsuarioRepository:
@@ -22,6 +22,18 @@ class UsuarioRepository:
         # Solo se actualizan datos de contacto; el hash de la contraseña no se toca
         actualizado = usuario.model_copy(
             update={"nombre": nombre, "email": email, "telefono": telefono})
+        self._db[usuario_id] = actualizado
+        return actualizado
+
+    def update_seguridad(
+        self, usuario_id: int, intentos_fallidos: int, estado: EstadoCuenta
+    ) -> Optional[UsuarioInDB]:
+        """HU-002: actualiza el contador de intentos fallidos y el estado de la cuenta."""
+        usuario = self._db.get(usuario_id)
+        if not usuario:
+            return None
+        actualizado = usuario.model_copy(
+            update={"intentos_fallidos": intentos_fallidos, "estado": estado})
         self._db[usuario_id] = actualizado
         return actualizado
 
