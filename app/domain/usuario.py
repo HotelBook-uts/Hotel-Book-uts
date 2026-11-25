@@ -1,5 +1,6 @@
 from typing import Optional
 
+from email_validator import EmailNotValidError, validate_email
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
@@ -50,15 +51,48 @@ class UsuarioInDB(Usuario):
     password_hash: str
 
 
-# HU-003: datos públicos que se muestran al consultar un usuario
-class UsuarioConsulta(BaseModel):
-    id: int
-    nombre: str
-    correo: EmailStr
+# ---------------------------------------------------------------------------
+# HU-004: consulta y actualización del perfil del cliente
+# ---------------------------------------------------------------------------
+
+MENSAJE_CORREO_INVALIDO = "Formato de correo no válido. Debe ser usuario@dominio.com"
 
 
-# HU-003: formato estándar de respuesta de la consulta de usuario
-class RespuestaUsuario(BaseModel):
+# Perfil del cliente sin datos sensibles (nunca incluye la contraseña)
+class PerfilUsuario(BaseModel):
+    usuarioId: int
+    nombres: Optional[str] = None
+    correo: Optional[str] = None
+    telefono: Optional[str] = None
+
+
+# Lo que envía el cliente para ACTUALIZAR su perfil
+class PerfilUpdate(BaseModel):
+    nombres: str = Field(..., min_length=2, max_length=100,
+                         description="Nombres y apellidos del cliente")
+    correo: str = Field(..., description="Correo electrónico (usuario@dominio.com)")
+    telefono: Optional[str] = Field(default=None, pattern=r"^\+?\d{7,15}$",
+                                    description="Teléfono de contacto")
+
+    # Regla de negocio: limpiar espacios y dar formato a los nombres
+    @field_validator("nombres")
+    @classmethod
+    def limpiar_nombres(cls, v: str) -> str:
+        return v.strip().title()
+
+    # Regla de negocio: el correo debe tener formato válido y se guarda en minúsculas
+    @field_validator("correo")
+    @classmethod
+    def validar_correo(cls, v: str) -> str:
+        try:
+            validate_email(v, check_deliverability=False)
+        except EmailNotValidError:
+            raise ValueError(MENSAJE_CORREO_INVALIDO)
+        return v.strip().lower()
+
+
+# Formato estándar de respuesta del perfil: {mensaje, data, success}
+class RespuestaPerfil(BaseModel):
     mensaje: str
-    data: Optional[UsuarioConsulta] = None
+    data: Optional[PerfilUsuario] = None
     success: bool

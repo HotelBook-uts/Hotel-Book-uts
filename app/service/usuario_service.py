@@ -1,9 +1,9 @@
-from typing import Optional
-
 from fastapi import HTTPException, status
 
 from app.core.security import hash_password
-from app.domain.usuario import Usuario, UsuarioConsulta, UsuarioCreate
+from app.domain.errores import CorreoDuplicadoError, UsuarioNoEncontradoError
+from app.domain.usuario import (PerfilUpdate, PerfilUsuario, Usuario,
+                                UsuarioCreate, UsuarioInDB)
 from app.repositories.usuario_repository import UsuarioRepository
 
 
@@ -23,10 +23,35 @@ class UsuarioService:
         # Se devuelve sin el hash de la contraseña
         return Usuario(**usuario.model_dump(exclude={"password_hash"}))
 
-    def consultar(self, usuario_id: int) -> Optional[UsuarioConsulta]:
-        # Regla de negocio: validar que el usuario exista
+    # HU-004: consulta del perfil del cliente
+    # TODO HU-002: validar que quien consulta sea el dueño del perfil o un administrador
+    def consultar_perfil(self, usuario_id: int) -> PerfilUsuario:
         usuario = self.repo.get_by_id(usuario_id)
         if not usuario:
-            return None
-        # Solo se exponen los datos públicos (nunca la contraseña)
-        return UsuarioConsulta(id=usuario.id, nombre=usuario.nombre, correo=usuario.email)
+            raise UsuarioNoEncontradoError(usuario_id)
+        return self._a_perfil(usuario)
+
+    # HU-004: actualización del perfil del cliente
+    # TODO HU-002: validar que quien actualiza sea el dueño del perfil o un administrador
+    def actualizar_perfil(self, usuario_id: int, data: PerfilUpdate) -> PerfilUsuario:
+        if not self.repo.get_by_id(usuario_id):
+            raise UsuarioNoEncontradoError(usuario_id)
+
+        # Regla de negocio: el correo sigue siendo único
+        otro = self.repo.get_by_email(data.correo)
+        if otro and otro.id != usuario_id:
+            raise CorreoDuplicadoError(data.correo)
+
+        usuario = self.repo.update_perfil(
+            usuario_id, data.nombres, data.correo, data.telefono)
+        return self._a_perfil(usuario)
+
+    @staticmethod
+    def _a_perfil(usuario: UsuarioInDB) -> PerfilUsuario:
+        # Solo se exponen los datos de contacto (nunca la contraseña)
+        return PerfilUsuario(
+            usuarioId=usuario.id,
+            nombres=usuario.nombre,
+            correo=usuario.email,
+            telefono=usuario.telefono,
+        )
