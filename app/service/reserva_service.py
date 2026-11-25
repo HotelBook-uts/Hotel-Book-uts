@@ -1,8 +1,9 @@
 from datetime import date
 
 from app.domain.errores import (FechasInvalidasError, HabitacionNoDisponibleError,
-                                HabitacionNoEncontradaError, UsuarioNoEncontradoError)
-from app.domain.reserva import Reserva, ReservaCreate
+                                HabitacionNoEncontradaError, ReservaNoEncontradaError,
+                                ReservaYaCanceladaError, UsuarioNoEncontradoError)
+from app.domain.reserva import EstadoReserva, Reserva, ReservaCreate
 from app.repositories.habitacion_repository import HabitacionRepository
 from app.repositories.reserva_repository import ReservaRepository
 from app.repositories.usuario_repository import UsuarioRepository
@@ -44,3 +45,18 @@ class ReservaService:
             raise HabitacionNoDisponibleError(data.habitacionId)
 
         return self.repo.create(data)
+
+    # HU-014: cancelar una reserva registrada
+    # TODO HU-002: validar que quien cancela sea el dueño de la reserva o un administrador
+    def cancelar(self, reserva_id: int) -> Reserva:
+        reserva = self.repo.get_by_id(reserva_id)
+        if not reserva:
+            raise ReservaNoEncontradaError(reserva_id)
+
+        # Regla de negocio: solo se cancelan reservas activas
+        if reserva.estado == EstadoReserva.cancelada:
+            raise ReservaYaCanceladaError(reserva_id)
+
+        # Al quedar cancelada, deja de contar para la disponibilidad:
+        # la habitación queda libre para esas fechas
+        return self.repo.update_estado(reserva_id, EstadoReserva.cancelada)

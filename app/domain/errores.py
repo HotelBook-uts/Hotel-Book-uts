@@ -27,3 +27,11 @@ class HabitacionNoDisponibleError(Exception):
 
 class FechasInvalidasError(Exception):
     """Las fechas de la reserva no cumplen las reglas de negocio."""
+
+
+class ReservaNoEncontradaError(Exception):
+    """La reserva solicitada no existe."""
+
+
+class ReservaYaCanceladaError(Exception):
+    """La reserva ya estaba cancelada."""

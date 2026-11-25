@@ -24,6 +24,14 @@ class ReservaRepository:
             and r.se_cruza_con(entrada, salida)
         ]
 
+    def update_estado(self, reserva_id: int, estado: EstadoReserva) -> Optional[Reserva]:
+        reserva = self._db.get(reserva_id)
+        if not reserva:
+            return None
+        actualizada = reserva.model_copy(update={"estado": estado})
+        self._db[reserva_id] = actualizada
+        return actualizada
+
     def create(self, data: ReservaCreate) -> Reserva:
         reserva = Reserva(id=self._next_id, **data.model_dump())
         self._db[self._next_id] = reserva

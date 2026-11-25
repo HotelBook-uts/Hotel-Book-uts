@@ -44,6 +44,12 @@ class RespuestaReserva(BaseModel):
     success: bool
 
 
+# HU-014: formato de respuesta al cancelar: {mensaje, success}
+class RespuestaCancelacion(BaseModel):
+    mensaje: str
+    success: bool
+
+
 # Formato de respuesta de error: {mensaje, success}
 class RespuestaErrorReserva(BaseModel):
     mensaje: str
