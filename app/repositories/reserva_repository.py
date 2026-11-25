@@ -14,6 +14,9 @@ class ReservaRepository:
     def get_by_id(self, reserva_id: int) -> Optional[Reserva]:
         return self._db.get(reserva_id)
 
+    def get_by_usuario(self, usuario_id: int) -> List[Reserva]:
+        return [r for r in self._db.values() if r.usuarioId == usuario_id]
+
     def get_activas_que_se_cruzan(
         self, habitacion_id: int, entrada: date, salida: date
     ) -> List[Reserva]:
